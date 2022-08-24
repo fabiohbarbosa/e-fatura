@@ -76,7 +76,8 @@
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
     "moduleNameMapper": {
-      "@e-fatura/(.*)": "<rootDir>/modules/e-fatura/$1"
+      "@e-fatura/(.*)": "<rootDir>/modules/e-fatura/$1",
+      "@config/(.*)": "<rootDir>/config/$1"
     }
   },
   "engines": {
