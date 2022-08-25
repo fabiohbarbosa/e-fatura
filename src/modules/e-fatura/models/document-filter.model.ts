@@ -2,7 +2,7 @@ import { EstadoDocumento } from '@e-fatura/models/estado-documento.enum';
 
 export class DocumentFilter {
   nifEmitenteFilter?: number;
-  estadoDocumentoFilter: EstadoDocumento;
+  estadoDocumentoFilter?: EstadoDocumento;
 
   private dataInicioFilter: string;
   private dataFimFilter: string;
