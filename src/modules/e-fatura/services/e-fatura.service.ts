@@ -5,6 +5,8 @@ import { EstadoDocumento } from '@e-fatura/models/estado-documento.enum';
 import { DocumentFilter } from '@e-fatura/models/document-filter.model';
 import { FaturaRepository } from '@e-fatura/services/fatura.repository';
 import { Stats } from '@e-fatura/models/stats.model';
+import { Fatura } from '@e-fatura/models/fatura.model';
+import { TipoDocumentoHelper } from '@e-fatura/models/tipo-documento.enum';
 
 type Total = Record<number, { empresa: string; total: number }>;
 
@@ -54,19 +56,15 @@ export class EFaturaService {
 
     Logger.log(`iniciando auto preenchimento de faturas`);
 
-    const faturas = await this.faturaRepository.getByFilter(
-      new DocumentFilter(year, {
-        estadoDocumentoFilter: EstadoDocumento.PENDENTE,
-      }),
-    );
-
+    const faturas = await this.getFaturasGroupByNIF(year);
     if (!faturas.length) {
       Logger.warn(`não existem faturas pendentes`);
       return;
     }
 
     let totalAutoFill = 0;
-    for (const { nifEmitente } of faturas) {
+    for (const comerciante of faturas) {
+      const { nifEmitente } = comerciante;
       const atividade = comerciantesAtividades[nifEmitente];
       if (!atividade) {
         Logger.warn(`nenhum registro encontrado para o nif=${nifEmitente}`);
@@ -82,17 +80,9 @@ export class EFaturaService {
   private async getPreviousFilledEntries(
     year: number,
   ): Promise<Record<string, Atividade>> {
-    const lastYearEntries = await this.faturaRepository.getByFilter(
-      new DocumentFilter(year - 1, {
-        estadoDocumentoFilter: EstadoDocumento.REGISTRADA,
-      }),
-    );
-
-    const currentYearEntries = await this.faturaRepository.getByFilter(
-      new DocumentFilter(year, {
-        estadoDocumentoFilter: EstadoDocumento.REGISTRADA,
-      }),
-    );
+    const previousYear = year - 1;
+    const lastYearEntries = await this.getFaturasByYear(previousYear);
+    const currentYearEntries = await this.getFaturasByYear(year);
 
     const filledEntries = [...lastYearEntries, ...currentYearEntries];
 
@@ -125,6 +115,21 @@ export class EFaturaService {
     }, {});
   }
 
+  private async getFaturasByYear(year: number): Promise<Fatura[]> {
+    const tiposDocument = TipoDocumentoHelper.values();
+
+    const promises = tiposDocument.map((tipoDocumento) => {
+      return this.faturaRepository.getByFilter(
+        new DocumentFilter(year, {
+          tipoDocumentoFilter: tipoDocumento,
+          estadoDocumentoFilter: EstadoDocumento.REGISTRADA,
+        }),
+      );
+    });
+
+    return (await Promise.all(promises)).flat();
+  }
+
   async getByYear(year: number, nif?: number): Promise<Stats[]> {
     const faturas = await this.faturaRepository.getByFilter(
       new DocumentFilter(year, nif ? { nifEmitenteFilter: nif } : undefined),
@@ -155,5 +160,32 @@ export class EFaturaService {
           } as Stats),
       )
       .sort((a, b) => (a.total > b.total ? -1 : 1));
+  }
+
+  private async getFaturasGroupByNIF(year: number): Promise<Fatura[]> {
+    const faturas = await this.faturaRepository.getByFilter(
+      new DocumentFilter(year, {
+        estadoDocumentoFilter: EstadoDocumento.PENDENTE,
+      }),
+    );
+
+    if (!faturas.length) {
+      Logger.warn(`não existem faturas pendentes`);
+      return [];
+    }
+
+    const setOfFaturasByNIF = faturas.reduce((acc, fatura) => {
+      const nifEmitente = fatura.nifEmitente;
+      const existingValue = acc[nifEmitente];
+      if (existingValue) {
+        return acc;
+      }
+      return {
+        ...acc,
+        [nifEmitente]: fatura,
+      };
+    }, {} as Record<number, Fatura>);
+
+    return Object.values(setOfFaturasByNIF);
   }
 }

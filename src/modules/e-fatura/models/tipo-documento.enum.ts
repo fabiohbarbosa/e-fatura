@@ -5,3 +5,9 @@ export enum TipoDocumento {
   FATURA_SIMPLIFICADA = 'FS',
   FATURA_RECIBO = 'FR',
 }
+
+export class TipoDocumentoHelper {
+  static values(): TipoDocumento[] {
+    return Object.values(TipoDocumento);
+  }
+}
