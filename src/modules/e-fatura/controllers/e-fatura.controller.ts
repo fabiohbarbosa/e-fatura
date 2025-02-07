@@ -10,8 +10,9 @@ import {
 } from '@nestjs/common';
 import { Atividade } from '@e-fatura/models/atividade.enum';
 import { EFaturaService } from '@e-fatura/services/e-fatura.service';
+import { props } from '@config/props';
 
-const year = 2022;
+const years = props.years;
 
 @Controller('/e-fatura')
 export class EFaturaController {
@@ -24,11 +25,15 @@ export class EFaturaController {
     @Query('somentePendentes', new DefaultValuePipe(true), ParseBoolPipe)
     onlyPendingEntries: boolean,
   ): Promise<void> {
-    return this.service.submitByNIF(year, nif, atividade, onlyPendingEntries);
+    const process = years.map((year) =>
+      this.service.submitByNIF(year, nif, atividade, onlyPendingEntries),
+    );
+    await Promise.all(process);
   }
 
   @Patch()
   async autoSubmit(): Promise<void> {
-    return this.service.autoSubmit(year);
+    const process = years.map((year) => this.service.autoSubmit(year));
+    await Promise.all(process);
   }
 }

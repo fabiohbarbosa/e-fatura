@@ -4,4 +4,8 @@ export const props = {
   env,
   port: 3000,
   cookiePath: './src/config/cookie',
+  years: [2023, 2024],
+  database: {
+    cleanUp: false,
+  },
 };

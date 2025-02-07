@@ -4,19 +4,14 @@ import { Fatura } from '@e-fatura/models/fatura.model';
 import { DocumentFilter } from '@e-fatura/models/document-filter.model';
 import { EstadoDocumento } from '@e-fatura/models/estado-documento.enum';
 import { lastValueFrom } from 'rxjs';
-import * as fs from 'fs';
-import { props } from '@config/props';
 import { Documentos } from '@e-fatura/models/documentos.model';
 import { URLSearchParams } from 'url';
 import { Atividade } from '@e-fatura/models/atividade.enum';
+import * as fs from 'fs';
+import { props } from '@config/props';
 
 @Injectable({ scope: Scope.REQUEST })
 export class FaturaRepository {
-  private readonly cookie = fs
-    .readFileSync(props.cookiePath)
-    .toString('utf-8')
-    .replace(/(\r\n|\n|\r)/gm, '');
-
   constructor(private readonly httpService: HttpService) {}
 
   async getByNIF(
@@ -95,6 +90,12 @@ export class FaturaRepository {
     }
   }
 
+  private getCookie = () =>
+    fs
+      .readFileSync(props.cookiePath)
+      .toString('utf-8')
+      .replace(/(\r\n|\n|\r)/gm, '');
+
   private getHeaders = (): Record<string, string> => ({
     Accept: 'application/json, text/javascript, */*; q=0.01',
     'Accept-Language': 'en,pt;q=0.9,pt-PT;q=0.8,en-US;q=0.7,es;q=0.6',
@@ -111,6 +112,6 @@ export class FaturaRepository {
       '"Chromium";v="104", " Not A;Brand";v="99", "Google Chrome";v="104"',
     'sec-ch-ua-mobile': '?0',
     'sec-ch-ua-platform': '"macOS"',
-    cookie: this.cookie,
+    cookie: this.getCookie(),
   });
 }

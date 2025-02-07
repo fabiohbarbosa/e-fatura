@@ -3,18 +3,23 @@ import { HttpService } from '@nestjs/axios';
 import { Atividade } from '@e-fatura/models/atividade.enum';
 import { EstadoDocumento } from '@e-fatura/models/estado-documento.enum';
 import { DocumentFilter } from '@e-fatura/models/document-filter.model';
-import { FaturaRepository } from '@e-fatura/services/fatura.repository';
+import { FaturaRepository } from '@e-fatura/repositories/fatura.repository';
 import { Stats } from '@e-fatura/models/stats.model';
 import { Fatura } from '@e-fatura/models/fatura.model';
 import { TipoDocumentoHelper } from '@e-fatura/models/tipo-documento.enum';
+import { ComercianteRepository } from '@e-fatura/repositories/comerciante.repository';
+import { Comerciante } from '@e-fatura/models/comerciante.model';
 
 type Total = Record<number, { empresa: string; total: number }>;
+
+type MapByNIF = Record<number, { atividade: Atividade; dataEmissao: Date }>;
 
 @Injectable()
 export class EFaturaService {
   constructor(
     private readonly httpService: HttpService,
     private readonly faturaRepository: FaturaRepository,
+    private readonly empresaRepository: ComercianteRepository,
   ) {}
 
   async submitByNIF(
@@ -36,7 +41,9 @@ export class EFaturaService {
 
     const nomeEmitente = faturas[0].nomeEmitente;
     Logger.log(`>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>`);
-    Logger.log(`> emitente=${nomeEmitente} - atividade=${atividade}`);
+    Logger.log(
+      `> emitente=${nomeEmitente} - nif=${nif} - atividade=${atividade}`,
+    );
     for (const fatura of faturas) {
       Logger.log(
         `>> fatura=${fatura.idDocumento} data=${fatura.dataEmissaoDocumento}`,
@@ -54,11 +61,12 @@ export class EFaturaService {
       `comerciantes preenchidos=${Object.keys(comerciantesAtividades).length}`,
     );
 
-    Logger.log(`iniciando auto preenchimento de faturas`);
+    Logger.log(`iniciando auto preenchimento de faturas para o ano=${year}`);
 
     const faturas = await this.getFaturasGroupByNIF(year);
     if (!faturas.length) {
-      Logger.warn(`não existem faturas pendentes`);
+      Logger.warn(`não existem faturas pendentes para o ano=${year}`);
+      Logger.log(`>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>`);
       return;
     }
 
@@ -67,24 +75,27 @@ export class EFaturaService {
       const { nifEmitente } = comerciante;
       const atividade = comerciantesAtividades[nifEmitente];
       if (!atividade) {
-        Logger.warn(`nenhum registro encontrado para o nif=${nifEmitente}`);
+        Logger.warn(`nenhum registro encontrado para o nif=${nifEmitente} `);
         continue;
       }
       await this.submitByNIF(year, nifEmitente, atividade, true);
       totalAutoFill = totalAutoFill + 1;
     }
 
-    Logger.log(`total=${totalAutoFill}`);
+    Logger.log(`total=${totalAutoFill} faturas preenchidas - ano=${year}`);
+    Logger.log(`>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>`);
   }
 
-  private async getPreviousFilledEntries(
-    year: number,
-  ): Promise<Record<string, Atividade>> {
-    const previousYear = year - 1;
-    const lastYearEntries = await this.getFaturasByYear(previousYear);
+  private async getPreviousFilledEntries(year: number): Promise<Comerciante> {
+    const lastOneYearEntries = await this.getFaturasByYear(year - 1);
+    const lastTwoYearEntries = await this.getFaturasByYear(year - 2);
     const currentYearEntries = await this.getFaturasByYear(year);
 
-    const filledEntries = [...lastYearEntries, ...currentYearEntries];
+    const filledEntries = [
+      ...lastOneYearEntries,
+      ...lastTwoYearEntries,
+      ...currentYearEntries,
+    ];
 
     const mapByNIF = filledEntries.reduce((acc, fatura) => {
       const existingValue = acc[fatura.nifEmitente];
@@ -104,15 +115,28 @@ export class EFaturaService {
           dataEmissao: new Date(fatura.dataEmissaoDocumento),
         },
       };
-    }, {} as Record<number, { atividade: Atividade; dataEmissao: Date }>);
+    }, {} as MapByNIF);
 
     // extract value for { nif: atividade }
-    return Object.entries(mapByNIF).reduce((acc, [key, value]) => {
-      return {
-        ...acc,
-        [key]: value.atividade,
-      };
-    }, {});
+    const comerciantesFromEntries = Object.entries(mapByNIF).reduce(
+      (acc, [key, value]) => {
+        return {
+          ...acc,
+          [key]: value.atividade,
+        };
+      },
+      {} as Comerciante,
+    );
+
+    const comerciantesFromDatabase = this.empresaRepository.findAll();
+    const allComerciantes: Comerciante = {
+      ...comerciantesFromDatabase,
+      ...comerciantesFromEntries, // overwrite values from database from new entries
+    };
+
+    this.empresaRepository.insert(allComerciantes);
+
+    return allComerciantes;
   }
 
   private async getFaturasByYear(year: number): Promise<Fatura[]> {
@@ -170,7 +194,6 @@ export class EFaturaService {
     );
 
     if (!faturas.length) {
-      Logger.warn(`não existem faturas pendentes`);
       return [];
     }
 
